@@ -133,6 +133,10 @@ pytest
 python -m compileall src tests
 ```
 
+## Release
+
+PyPI releases are built from the clean `public` branch. See `RELEASE.md` for the Trusted Publishing setup and tag-based release workflow.
+
 ## License
 
 Package code is released under the MIT License. Dataset files retain their original dataset license and attribution requirements.
