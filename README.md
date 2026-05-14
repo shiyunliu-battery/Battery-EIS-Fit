@@ -1,142 +1,176 @@
 # eisfit
 
-`eisfit` is an open-source Python package for fitting electrochemical impedance spectroscopy (EIS) data and identifying equivalent-circuit parameters.
+`eisfit` is a lightweight Python package for fitting electrochemical impedance spectroscopy (EIS) data and extracting equivalent-circuit parameters.
 
-The base model is:
+The package supports a two-arc equivalent circuit with either a CPE-type low-frequency tail or a semi-infinite Warburg tail:
 
 ```text
 Z = jωL + R0 + (R1 || CPE1) + (R2 || CPE2) + tail
 ```
 
-Two low-frequency tail models are available:
-
-```text
-CPE tail, default:       tail = 1 / (Qd * (jω)^nd)
-Warburg tail:            tail = σ / sqrt(jω)
-```
-
-The CPE version keeps `Qd` and `nd` free. The Warburg version is the traditional semi-infinite Warburg form, equivalent to a CPE exponent fixed at `n = 0.5` with a single fitted coefficient `σ`.
-
-CPE parameters:
-
-```text
-[L, R0, R1, Q1, n1, R2, Q2, n2, Qd, nd]
-```
-
-Warburg parameters:
-
-```text
-[L, R0, R1, Q1, n1, R2, Q2, n2, sigma]
-```
+It is designed for battery EIS analysis workflows where users need a simple Python API, a command-line tool, and reproducible fitted outputs.
 
 ## Features
 
-- CSV and Excel EIS data loading with flexible column matching
-- Multi-start bounded least-squares fitting
-- Robust loss and impedance-modulus weighting options
-- Python functions and command-line interface
-- Excel/PNG output generation for local analysis
-- Public demo notebook for the Zenodo-derived repository dataset
-
-## Dataset attribution
-
-The repository `EIS_dataset` example files are from:
-
-> M. Moertelmaier, M. Kasper, and S. Clark, "EIS data of 54 21700 cells", Zenodo, May 26, 2025. doi: 10.5281/zenodo.15422339.
-
-The included metadata reports a CC-BY 4.0 license for the dataset. Keep this attribution if you redistribute the data.
-The PyPI package distributions intentionally do not bundle the dataset; use your own EIS files after installation.
+- Load EIS data from CSV, XLS, and XLSX files
+- Fit complex impedance data with bounded multi-start least squares
+- Use either a flexible CPE tail or a Warburg diffusion tail
+- Export fitted parameters, simulated impedance, residuals, and Nyquist plots
+- Run from Python notebooks, scripts, or the command line
+- Use included demo files to test the workflow immediately after cloning
 
 ## Installation
 
-After PyPI release:
+Install the released package from PyPI:
 
 ```bash
 pip install eisfit
 ```
 
-For local development:
+For local development from a cloned repository:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-Minimal package only:
+## Quick Start
 
-```bash
-pip install -e .
+Fit one EIS file directly:
+
+```python
+from eisfit import fit_file
+
+result = fit_file("my_eis.csv", tail="cpe", n_starts=40)
+
+print(result.parameters)
+print(result.rmse, result.nrmse)
 ```
 
-## Python usage
-
-Simple array-based use:
+Load the data first when you want direct access to frequency and impedance arrays:
 
 ```python
 from eisfit import fit, load_eis
 
 freq, Zexp = load_eis("my_eis.csv")
+result = fit(freq, Zexp, tail="warburg")
 
-cpe = fit(freq, Zexp)                  # default tail="cpe"
-warburg = fit(freq, Zexp, tail="warburg")
-
-print(cpe.parameters)
-print(cpe.rmse, cpe.nrmse)
+print(result.parameters)
 ```
 
-One-line file-based use:
+`freq` is the frequency array in Hz. `Zexp` is the measured complex impedance array:
 
-```python
-from eisfit import fit_file
-
-result = fit_file("my_eis.csv", tail="cpe")
-warburg = fit_file("my_eis.csv", tail="warburg")
+```text
+Zexp = Zreal + 1j * Zimag
 ```
 
-Advanced use with full configuration:
+## Input Data
 
-```python
-from eisfit import FitConfig, fit_model_eis, load_eis
+Input files should contain at least three columns:
 
-freq, Zexp = load_eis("my_eis.csv")
-cfg = FitConfig(tail="cpe", n_starts=80, seed=7, max_nfev=8000)
-result = fit_model_eis(freq, Zexp, cfg=cfg)
+| Quantity | Meaning |
+| --- | --- |
+| frequency | Frequency in Hz |
+| real impedance | Real part of impedance, usually `Zreal` or `Zre` |
+| imaginary impedance | Imaginary part of impedance, usually `Zimag` or `Zim` |
+
+Extra columns are allowed. `eisfit` tries to infer common column names automatically.
+
+Example CSV:
+
+```csv
+Frequency_Hz,Zreal_Ohm,Zimag_Ohm
+100000,0.0182,-0.0014
+79432.8,0.0184,-0.0017
+63100,0.0187,-0.0021
 ```
 
-## Command-line usage
+## Models
 
-Fit one file with the default CPE tail and write Excel/PNG outputs:
+Default CPE-tail model:
+
+```text
+tail = 1 / (Qd * (jω)^nd)
+parameters = [L, R0, R1, Q1, n1, R2, Q2, n2, Qd, nd]
+```
+
+Warburg-tail model:
+
+```text
+tail = σ / sqrt(jω)
+parameters = [L, R0, R1, Q1, n1, R2, Q2, n2, sigma]
+```
+
+The CPE tail keeps the diffusion-like exponent free. The Warburg tail uses the traditional semi-infinite Warburg form.
+
+## Command Line
+
+Fit one file:
 
 ```bash
 eisfit my_eis.csv --out-dir outputs --n-starts 40
 ```
 
-Fit the same file with a semi-infinite Warburg tail:
+Use the Warburg tail:
 
 ```bash
 eisfit my_eis.csv --tail warburg --out-dir outputs --n-starts 40
 ```
 
-Batch fit a folder:
+Fit all matching files in a folder:
 
 ```bash
 eisfit my_eis_folder --pattern "*.csv" --out-dir outputs --n-starts 20
 ```
 
-## Public notebook
+## Outputs
 
-Use `examples/demo_fit_zenodo_dataset.ipynb` with the repository dataset for a clean public demo.
+For each fitted file, `eisfit` can generate:
 
-## Development checks
+- fitted equivalent-circuit parameters
+- simulated impedance values
+- residuals between measured and fitted impedance
+- Nyquist plot PNG
+- Excel output table for downstream analysis
+
+## Demo
+
+The repository includes example EIS files and a demo notebook:
+
+```text
+examples/demo_fit_zenodo_dataset.ipynb
+```
+
+You can run the notebook after installing the local development environment:
+
+```bash
+pip install -e ".[dev]"
+jupyter notebook
+```
+
+## Development
+
+Run the test suite:
 
 ```bash
 pytest
+```
+
+Run a basic import/compile check:
+
+```bash
 python -m compileall src tests
+```
+
+Build the package locally:
+
+```bash
+python -m build
 ```
 
 ## Release
 
-PyPI releases are built from the clean `public` branch. See `RELEASE.md` for the Trusted Publishing setup and tag-based release workflow.
+PyPI releases are built from the clean public package branch using GitHub Actions and Trusted Publishing. See `RELEASE.md` for the release workflow.
 
 ## License
 
-Package code is released under the MIT License. Dataset files retain their original dataset license and attribution requirements.
+The package code is released under the MIT License.

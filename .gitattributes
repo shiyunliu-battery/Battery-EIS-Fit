@@ -7,3 +7,7 @@
 *.xlsx binary
 *.xls binary
 *.ipynb text eol=lf
+
+EIS_dataset/metadata.html linguist-documentation
+EIS_dataset/metadata.jsonld linguist-documentation
+*.ipynb linguist-documentation
