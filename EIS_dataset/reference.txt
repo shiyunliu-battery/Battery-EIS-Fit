@@ -1,0 +1,1 @@
+[1]M. Moertelmaier, M. Kasperand S. Clark, “EIS data of 54 21700 cells”. Zenodo, May 26, 2025. doi: 10.5281/zenodo.15422339.

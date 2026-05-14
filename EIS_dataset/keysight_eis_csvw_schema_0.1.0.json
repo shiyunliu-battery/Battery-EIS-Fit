@@ -1,0 +1,159 @@
+{
+  "@context": "https://w3id.org/emmo/domain/battery/context",
+  "@type": "csvw:TableSchema",
+  "dc:title": "Keysight EIS Measurement Data Table Schema",
+  "dc:description": "A table schema describing EIS measurement results from Keysight equipment",
+  "dc:subject": ["battery", "data", "EIS"],
+  "dc:language": "en",
+  "dc:license": {
+      "@id": "https://spdx.org/licenses/Apache-2.0.html"
+  },
+  "dc:accessRights": "public",
+  "dc:publisher": {
+      "@type": "schema:Corporation",
+      "@id": "https://ror.org/036y1an55",
+      "schema:name": "Keysight Technologies (Austria)"
+  },
+  "dc:creator": {
+      "@type": "schema:Person",
+      "@id": "https://orcid.org/0000-0002-8758-6109",
+      "schema:name": "Manuel Moertelmaier",
+      "schema:affiliation": {
+          "@type": "schema:ResearchOrganization",
+          "@id": "https://ror.org/036y1an55",
+          "schema:name": "Keysight Technologies (Austria)"
+      }
+  },
+  "dc:contributor": [
+    {
+      "@type": "schema:Person",
+      "@id": "https://orcid.org/0000-0002-8758-6109",
+      "schema:name": "Simon Clark",
+      "schema:affiliation": {
+      	"@type": "schema:ResearchOrganization",
+      	"schema:name": "SINTEF"
+      }
+    } 
+  ],
+  "dc:modified": {
+      "@value": "2025-05-21",
+      "@type": "xsd:date"
+  },
+  "dc:created": {
+      "@value": "2025-05-21",
+      "@type": "xsd:date"
+  },
+  "dc:hasVersion": "0.1.0",
+  "dc:format": "application/ld+json",
+  "schema:name": "Keysight EIS Table Schema",
+  "schema:description": "A table schema describing EIS measurement results from Keysight equipment",
+  "schema:version": "0.1.0",
+  "schema:encodingFormat": "application/ld+json",
+  "csvw:columns": [
+    {
+      "csvw:name": "Frequency_Hz",
+      "csvw:titles": "Frequency_Hz",
+      "csvw:propertyUrl": "schema:value",
+      "csvw:datatype": {
+        "@type": "Frequency",
+        "rdfs:label": "Frequency",
+        "csvw:base": "number"
+      },
+      "dc:description": "Frequency at which the impedance was measured.",
+      "hasMeasurementUnit": [
+        {
+          "@id": "emmo:Hertz"
+        },
+        {
+          "@id": "unit:HZ"
+        }
+      ],
+      "schema:unitCode": [
+        {
+          "@id": "emmo:Hertz"
+        },
+        {
+          "@id": "unit:HZ"
+        }
+      ],
+      "sdmx-attribute:unitMeasure": [
+        {
+          "@id": "emmo:Hertz"
+        },
+        {
+          "@id": "unit:HZ"
+        }
+      ]
+    },
+    {
+      "csvw:name": "Real_Ohm",
+      "csvw:titles": "Real_Ohm",
+      "csvw:propertyUrl": "schema:value",
+      "csvw:datatype": {
+        "@type": "RealElectricImpedance",
+        "rdfs:label": "Real Electric Impedance",
+        "csvw:base": "number"
+      },
+      "dc:description": "Real part of the impedance.",
+      "hasMeasurementUnit": [
+        {
+          "@id": "emmo:Ohm"
+        },
+        {
+          "@id": "unit:OHM"
+        }
+      ],
+      "schema:unitCode": [
+        {
+          "@id": "emmo:Ohm"
+        },
+        {
+          "@id": "unit:OHM"
+        }
+      ],
+      "sdmx-attribute:unitMeasure": [
+        {
+          "@id": "emmo:Ohm"
+        },
+        {
+          "@id": "unit:OHM"
+        }
+      ]
+    },
+    {
+      "csvw:name": "Imag_Ohm",
+      "csvw:titles": "Imag_Ohm",
+      "csvw:propertyUrl": "schema:value",
+      "csvw:datatype": {
+        "@type": "ImaginaryElectricImpedance",
+        "rdfs:label": "Imaginary Electric Impedance",
+        "csvw:base": "number"
+      },
+      "dc:description": "Imaginary part of the impedance.",
+      "hasMeasurementUnit": [
+        {
+          "@id": "emmo:Ohm"
+        },
+        {
+          "@id": "unit:OHM"
+        }
+      ],
+      "schema:unitCode": [
+        {
+          "@id": "emmo:Ohm"
+        },
+        {
+          "@id": "unit:OHM"
+        }
+      ],
+      "sdmx-attribute:unitMeasure": [
+        {
+          "@id": "emmo:Ohm"
+        },
+        {
+          "@id": "unit:OHM"
+        }
+      ]
+    }
+  ]
+}
