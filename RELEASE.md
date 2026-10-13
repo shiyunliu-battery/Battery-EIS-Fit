@@ -35,7 +35,24 @@ git tag -a v0.1.0 -m "Release v0.1.0"
 git push origin v0.1.0
 ```
 
-GitHub Actions will test, build, and publish the distribution to PyPI after the `pypi` environment approval.
+GitHub Actions will test, build, and publish the distribution to PyPI after any
+configured `pypi` environment approval.
+
+## Release branch
+
+The same publishing workflow also accepts a `release/<version>` branch. The
+branch suffix must match the package version in `pyproject.toml`; a mismatch
+fails before publication. Prepare the version update and changelog from
+`public`, then push the release branch:
+
+```bash
+git switch -c release/0.1.1 public
+git push origin release/0.1.1
+```
+
+After successful PyPI publication, the workflow creates the matching GitHub
+tag and release at the exact published commit. Merge the release changes back
+into `public`. The tag workflow is still available for subsequent releases.
 
 ## Version updates
 
