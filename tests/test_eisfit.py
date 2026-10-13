@@ -55,7 +55,8 @@ def test_model_returns_complex_array_for_warburg_tail():
 
 def test_simple_fit_api_uses_cpe_tail_by_default():
     freq, Zexp = sample_eis()
-    result = fit(freq, Zexp, n_starts=1, max_nfev=200, seed=1)
+    result = fit(freq, Zexp, n_starts=1, max_nfev=8000, seed=1)
+    assert result.optimizer.success
     assert set(result.parameters) == set(parameter_names("cpe"))
     assert result.tail == "cpe"
     assert np.isfinite(result.rmse)
@@ -65,7 +66,8 @@ def test_simple_fit_api_uses_cpe_tail_by_default():
 
 def test_simple_fit_api_supports_warburg_tail():
     freq, Zexp = sample_eis()
-    result = fit(freq, Zexp, tail="warburg", n_starts=1, max_nfev=200, seed=1)
+    result = fit(freq, Zexp, tail="warburg", n_starts=1, max_nfev=8000, seed=1)
+    assert result.optimizer.success
     assert set(result.parameters) == set(parameter_names("warburg"))
     assert result.tail == "warburg"
     assert "sigma" in result.parameters
@@ -76,8 +78,9 @@ def test_simple_fit_api_supports_warburg_tail():
 
 def test_fit_sorts_array_inputs_before_fitting():
     freq, Zexp = sample_eis()
-    descending = fit(freq, Zexp, n_starts=1, max_nfev=200, seed=1)
-    ascending = fit(freq[::-1], Zexp[::-1], n_starts=1, max_nfev=200, seed=1)
+    descending = fit(freq, Zexp, n_starts=1, max_nfev=8000, seed=1)
+    ascending = fit(freq[::-1], Zexp[::-1], n_starts=1, max_nfev=8000, seed=1)
+    assert descending.optimizer.success and ascending.optimizer.success
 
     assert np.allclose(descending.p_opt, ascending.p_opt)
     assert descending.rmse == pytest.approx(ascending.rmse)
@@ -107,7 +110,8 @@ def test_fit_file_api_loads_and_fits_csv(tmp_path):
     path = tmp_path / "sample.csv"
     write_sample_csv(path)
 
-    result = fit_file(path, n_starts=1, max_nfev=200, seed=1)
+    result = fit_file(path, n_starts=1, max_nfev=8000, seed=1)
+    assert result.optimizer.success
 
     assert result.tail == "cpe"
     assert np.isfinite(result.rmse)

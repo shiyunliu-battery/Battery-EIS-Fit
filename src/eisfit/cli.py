@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 
 from .config import FitConfig
+from .fitting import FitConvergenceError
 from .pipeline import process_file, process_folder
 
 
@@ -32,13 +33,24 @@ def main(argv: list[str] | None = None) -> int:
     if path.is_dir():
         results = process_folder(path, pattern=args.pattern, cfg=cfg, out_dir=args.out_dir)
         summary = {name: (value.get("fit").parameters if "fit" in value else value) for name, value in results.items()}
+        exit_code = int(any("error" in value for value in results.values()))
     else:
-        result = process_file(path, cfg=cfg, out_dir=args.out_dir)
+        try:
+            result = process_file(path, cfg=cfg, out_dir=args.out_dir)
+        except FitConvergenceError as exc:
+            print(json.dumps({
+                "error": str(exc),
+                "error_type": "FitConvergenceError",
+                "attempts": [asdict(attempt) for attempt in exc.attempts],
+            }, indent=2, allow_nan=False))
+            return 1
         fit = result["fit"]
-        summary = {"parameters": fit.parameters, "rmse": fit.rmse, "nrmse": fit.nrmse, "outputs": result["outputs"], "config": asdict(cfg)}
+        summary = {"parameters": fit.parameters, "rmse": fit.rmse, "nrmse": fit.nrmse, "outputs": result["outputs"],
+                   "diagnostics": fit.diagnostics, "config": asdict(cfg)}
+        exit_code = 0
 
     print(json.dumps(summary, indent=2, default=str))
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

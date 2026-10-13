@@ -43,7 +43,8 @@ def fit_file(
     out_dir: Optional[str | Path] = None,
 ) -> FitResult:
     freq, Zexp = load_eis(path)
-    result = fit(freq, Zexp, tail=tail, n_starts=n_starts, seed=seed, max_nfev=max_nfev, weight=weight, loss=loss)
+    cfg = FitConfig(tail=tail, n_starts=n_starts, seed=seed, max_nfev=max_nfev, weight_func=weight, loss=loss)
+    result = fit_model_eis(freq, Zexp, cfg=cfg)
     if out_dir is not None:
-        save_fit_outputs(path, freq, Zexp, result, out_dir=out_dir)
+        save_fit_outputs(path, freq, Zexp, result, out_dir=out_dir, cfg=cfg)
     return result

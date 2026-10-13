@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
 from .config import FitConfig
-from .fitting import FitResult, fit_model_eis
+from .fitting import FitConvergenceError, FitResult, fit_model_eis
 from .io import eis_dataframe, load_eis
 from .plotting import plot_fit
 
@@ -19,6 +21,7 @@ def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir
     base = input_path.stem
     out_xlsx = out_dir / f"{base}_{fit.tail}_eisfit.xlsx"
     out_png = out_dir / f"{base}_{fit.tail}_eisfit.png"
+    out_diagnostics = out_dir / f"{base}_{fit.tail}_fit_diagnostics.json"
 
     df_fit = eis_dataframe(freq, Zexp, fit.Zsim)
     df_params = pd.DataFrame({"Parameter": list(fit.parameters.keys()), "Value": list(fit.parameters.values())})
@@ -40,12 +43,22 @@ def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir
         }
     )
     df_bounds = pd.DataFrame({"BoundHit": fit.bound_hits})
+    df_attempts = pd.DataFrame([asdict(attempt) for attempt in fit.attempts])
 
     with pd.ExcelWriter(out_xlsx, engine="openpyxl") as writer:
         df_fit.to_excel(writer, sheet_name="fit_data", index=False)
         df_params.to_excel(writer, sheet_name="parameters", index=False)
         df_metrics.to_excel(writer, sheet_name="metrics", index=False)
         df_bounds.to_excel(writer, sheet_name="bound_hits", index=False)
+        df_attempts.to_excel(writer, sheet_name="optimizer_attempts", index=False)
+
+    out_diagnostics.write_text(json.dumps({
+        "parameters": fit.parameters,
+        "rmse": fit.rmse,
+        "nrmse": fit.nrmse,
+        "diagnostics": fit.diagnostics,
+        "config": asdict(cfg),
+    }, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
     fig = plot_fit(freq, Zexp, fit.Zsim, output_path=out_png, dpi=cfg.save_png_dpi)
     if cfg.close_plot:
@@ -53,7 +66,7 @@ def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir
 
         plt.close(fig)
 
-    return {"xlsx": str(out_xlsx), "png": str(out_png)}
+    return {"xlsx": str(out_xlsx), "png": str(out_png), "diagnostics": str(out_diagnostics)}
 
 
 def process_file(path: str | Path, cfg: FitConfig = FitConfig(), out_dir: Optional[str | Path] = None, sheet_name: Optional[str] = None) -> dict:
@@ -74,6 +87,12 @@ def process_folder(folder: str | Path, pattern: str = "*.csv", cfg: FitConfig = 
     for path in paths:
         try:
             results[str(path)] = process_file(path, cfg=cfg, out_dir=out_dir)
+        except FitConvergenceError as exc:
+            results[str(path)] = {
+                "error": str(exc),
+                "error_type": "FitConvergenceError",
+                "attempts": [asdict(attempt) for attempt in exc.attempts],
+            }
         except Exception as exc:
             results[str(path)] = {"error": repr(exc)}
     return results
