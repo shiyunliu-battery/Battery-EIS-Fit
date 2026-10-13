@@ -10,7 +10,7 @@ from .pipeline import process_file, process_folder, save_fit_outputs
 try:
     __version__ = version("eisfit")
 except PackageNotFoundError:
-    __version__ = "0.1.0"
+    __version__ = "0.1.1"
 
 __all__ = [
     "FitConfig",
