@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import numpy as np
@@ -15,6 +15,26 @@ SUPPORTED_WEIGHTS = {"modulus", "unit"}
 
 
 @dataclass(frozen=True)
+class FitAttempt:
+    start_index: int
+    optimizer_success: bool
+    accepted: bool
+    status: int
+    message: str
+    cost: float | None
+    nfev: int
+    rejection_reason: str | None
+
+
+class FitConvergenceError(RuntimeError):
+    """No multistart run produced a converged, finite fit."""
+
+    def __init__(self, attempts: tuple[FitAttempt, ...]) -> None:
+        self.attempts = attempts
+        super().__init__(f"No optimizer start converged to a finite solution ({len(attempts)} starts attempted).")
+
+
+@dataclass(frozen=True)
 class FitResult:
     parameters: dict[str, float]
     p_opt: np.ndarray
@@ -26,6 +46,45 @@ class FitResult:
     bound_hits: list[str]
     tail: TailModel
     optimizer: Any
+    attempts: tuple[FitAttempt, ...] = ()
+    selected_start_index: int | None = None
+    parameter_permutation: tuple[int, ...] = ()
+    parameter_bounds: dict[str, tuple[float, float]] = field(default_factory=dict)
+
+    @property
+    def diagnostics(self) -> dict[str, Any]:
+        """JSON-safe solver audit; convergence does not establish identifiability."""
+        return {
+            "optimizer_success": bool(self.optimizer.success),
+            "optimizer_status": int(self.optimizer.status),
+            "optimizer_message": str(self.optimizer.message),
+            "optimizer_nfev": int(self.optimizer.nfev),
+            "selected_start_index": self.selected_start_index,
+            "attempts": [asdict(attempt) for attempt in self.attempts],
+            "accepted_start_count": sum(attempt.accepted for attempt in self.attempts),
+            "parameter_ordering": "increasing_arc_characteristic_time",
+            "parameter_permutation": list(self.parameter_permutation),
+            "optimizer_parameter_order": "original_solver_order",
+            "parameter_bounds": {name: list(bounds) for name, bounds in self.parameter_bounds.items()},
+            "bound_hits": self.bound_hits,
+            "identifiability_status": "not_assessed",
+        }
+
+
+def canonical_arc_permutation(p: np.ndarray) -> tuple[int, ...]:
+    """Order R||CPE arcs by tau=(R*Q)**(1/n), with a deterministic exact-tie rule.
+
+    Use log(tau) to avoid overflow. This is a naming convention, not a physical
+    process assignment or evidence of persistent arc identity across spectra.
+    """
+    def key(start: int) -> tuple[float, float, float, float]:
+        R, Q, n = map(float, p[start:start + 3])
+        return ((np.log(R) + np.log(Q)) / n, R, Q, n)
+
+    permutation = list(range(len(p)))
+    if key(5) < key(2):
+        permutation[2:5], permutation[5:8] = permutation[5:8], permutation[2:5]
+    return tuple(permutation)
 
 
 def estimate_tail(freq: np.ndarray, Zexp: np.ndarray) -> tuple[float, float, float]:
@@ -203,18 +262,44 @@ def fit_model_eis(freq: np.ndarray, Zexp: np.ndarray, cfg: FitConfig = FitConfig
     p0 = np.clip(initial_guess(freq, Zexp, cfg.tail), lb * (1 + 1e-12), ub * (1 - 1e-12))
     rng = np.random.default_rng(cfg.seed)
     best = None
+    selected_start_index = None
+    attempts = []
 
     for k in range(cfg.n_starts):
         pstart = p0 if k == 0 else random_in_bounds(rng, lb, ub, cfg.tail)
         pstart = np.clip(pstart, lb * (1 + 1e-12), ub * (1 - 1e-12))
         res = least_squares(residual, pstart, bounds=(lb, ub), max_nfev=cfg.max_nfev, loss=cfg.loss, f_scale=f_scale)
-        if best is None or res.cost < best.cost:
+        reason = None
+        if not res.success:
+            reason = "optimizer_not_converged"
+        elif not np.isfinite(res.cost) or not np.all(np.isfinite(res.x)) or not np.all(np.isfinite(res.fun)):
+            reason = "non_finite_optimizer_result"
+        elif not np.all(np.isfinite(model_eis(res.x, w, tail=cfg.tail))):
+            reason = "non_finite_fitted_spectrum"
+        elif not np.isfinite(rmse_complex(model_eis(res.x, w, tail=cfg.tail), Zexp)):
+            reason = "non_finite_fit_error"
+        accepted = reason is None
+        attempts.append(FitAttempt(
+            start_index=k,
+            optimizer_success=bool(res.success),
+            accepted=accepted,
+            status=int(res.status),
+            message=str(res.message),
+            cost=float(res.cost) if np.isfinite(res.cost) else None,
+            nfev=int(res.nfev),
+            rejection_reason=reason,
+        ))
+        if accepted and (best is None or res.cost < best.cost):
             best = res
+            selected_start_index = k
 
     if best is None:
-        raise RuntimeError("Optimizer did not run. Check n_starts and fitting configuration.")
+        raise FitConvergenceError(tuple(attempts))
 
-    p_opt = best.x
+    permutation = canonical_arc_permutation(best.x)
+    order = list(permutation)
+    p_opt = np.asarray(best.x)[order].copy()
+    ordered_lb, ordered_ub = lb[order], ub[order]
     Zsim = model_eis(p_opt, w, tail=cfg.tail)
     rmse = rmse_complex(Zsim, Zexp)
     median_Z = float(max(np.median(np.abs(Zexp)), cfg.weight_eps))
@@ -229,7 +314,11 @@ def fit_model_eis(freq: np.ndarray, Zexp: np.ndarray, cfg: FitConfig = FitConfig
         nrmse=rmse / median_Z,
         step_rmse=step_rmse,
         step_nrmse=step_nrmse,
-        bound_hits=get_bound_hits(p_opt, lb, ub, cfg.tail),
+        bound_hits=get_bound_hits(p_opt, ordered_lb, ordered_ub, cfg.tail),
         tail=cfg.tail,
         optimizer=best,
+        attempts=tuple(attempts),
+        selected_start_index=selected_start_index,
+        parameter_permutation=permutation,
+        parameter_bounds=dict(zip(parameter_names(cfg.tail), zip(map(float, ordered_lb), map(float, ordered_ub)))),
     )

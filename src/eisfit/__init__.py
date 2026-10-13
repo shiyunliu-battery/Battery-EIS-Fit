@@ -1,7 +1,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from .config import FitConfig, PARAMETER_NAMES, PARAMETER_NAMES_CPE, PARAMETER_NAMES_WARBURG, TailModel, parameter_names
-from .fitting import FitResult, fit_model_eis
+from .fitting import FitAttempt, FitConvergenceError, FitResult, fit_model_eis
 from .interface import fit, fit_file
 from .io import load_eis
 from .model import model_eis, model_eis_step, rmse_complex, z_warburg
@@ -14,6 +14,8 @@ except PackageNotFoundError:
 
 __all__ = [
     "FitConfig",
+    "FitAttempt",
+    "FitConvergenceError",
     "FitResult",
     "PARAMETER_NAMES",
     "PARAMETER_NAMES_CPE",

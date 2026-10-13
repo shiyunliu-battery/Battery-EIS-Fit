@@ -46,6 +46,60 @@ print(result.parameters)
 print(result.rmse, result.nrmse)
 ```
 
+### Convergence and diagnostic records
+
+Only optimizer starts that converge and return finite parameters, residuals,
+cost, fitted impedance and fit error can be selected. The lowest-cost accepted
+start is returned. If every start fails, `fit()` and `fit_file()` raise
+`FitConvergenceError` instead of returning an unconverged parameter set:
+
+```python
+from dataclasses import asdict
+from eisfit import FitConvergenceError, fit
+
+try:
+    result = fit(freq, Zexp)
+except FitConvergenceError as error:
+    attempts = [asdict(attempt) for attempt in error.attempts]
+else:
+    print(result.diagnostics)
+```
+
+Each attempted start records its index, optimizer success/status/message,
+evaluation count, cost, acceptance and rejection reason. A failed file fit
+does not write new fitted outputs. The CLI reports convergence failures as
+JSON and exits with status 1; a folder run continues with the remaining files
+and exits with status 1 if any file fails. Existing outputs from earlier runs
+are not removed, so consumers should use the current result's returned paths.
+
+Convergence is a numerical termination condition. It does not establish a
+unique solution, adequate fit quality or a physical interpretation.
+`identifiability_status` is explicitly `not_assessed`.
+
+### Arc parameter ordering
+
+Reported `R1/Q1/n1` and `R2/Q2/n2` are ordered by increasing characteristic
+time `tau = (R * Q) ** (1 / n)` for each parallel R-CPE branch. Arc 1 therefore
+has the higher characteristic frequency. Exact time ties use `(R, Q, n)` as
+a deterministic secondary ordering. The full fitted spectrum is unchanged.
+
+This convention prevents an arbitrary exchange of the two branch labels.
+It does not assign SEI/charge-transfer processes, establish identifiability,
+or track the same physical arc across spectra, especially when the times
+overlap or cross.
+
+`result.parameters`, `p_opt`, staged fit errors, `parameter_bounds` and
+`bound_hits` use the reported order. `result.optimizer` retains SciPy's
+original solver order, including `x` and Jacobian columns. To relate them:
+
+```python
+reported = result.optimizer.x[list(result.parameter_permutation)]
+```
+
+The permutation and effective parameter bounds are included in
+`result.diagnostics`. Custom bounds are permuted with their branch, so bound
+warnings remain associated with the correct reported parameter.
+
 Load the data first when you want direct access to frequency and impedance arrays:
 
 ```python
@@ -131,6 +185,9 @@ For each fitted file, `eisfit` can generate:
 - residuals between measured and fitted impedance
 - Nyquist plot PNG
 - Excel output table for downstream analysis
+- optimizer-attempt audit sheet in the Excel output
+- `*_fit_diagnostics.json` containing parameters, solver diagnostics and the
+  actual requested fitting configuration, with effective bounds in diagnostics
 
 ## Demo
 
