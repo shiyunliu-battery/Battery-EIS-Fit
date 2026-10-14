@@ -1,5 +1,9 @@
 # eisfit
 
+[![Version](https://img.shields.io/badge/version-0.1.1-2563eb)](CHANGELOG.md)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776ab?logo=python&logoColor=white)](pyproject.toml)
+[![License](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
+
 `eisfit` is a lightweight Python package for fitting electrochemical impedance spectroscopy (EIS) data and extracting equivalent-circuit parameters.
 
 The package supports a two-arc equivalent circuit with either a CPE-type low-frequency tail or a semi-infinite Warburg tail:
