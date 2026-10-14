@@ -1,13 +1,28 @@
 from __future__ import annotations
 
+import dataclasses
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from eisfit import FitConfig, FitConvergenceError, fit, fit_file, fit_model_eis, model_eis, process_folder
+from eisfit import (
+    FitConfig,
+    FitConvergenceError,
+    PlotConfig,
+    fit,
+    fit_file,
+    fit_model_eis,
+    model_eis,
+    model_impedance,
+    parameter_names,
+    parameter_units,
+    process_file,
+    process_folder,
+)
 from eisfit import fitting
 from eisfit.cli import main
 
@@ -77,6 +92,86 @@ def test_nonfinite_successful_solver_result_is_rejected(monkeypatch, invalid):
     assert attempt.rejection_reason == "non_finite_optimizer_result"
     if invalid == "cost":
         assert attempt.cost is None
+    if invalid == "parameters":
+        assert attempt.parameters["R1_Ohm"] is None
+    json.dumps([dataclasses.asdict(a) for a in caught.value.attempts], allow_nan=False)
+
+
+def test_attempts_record_start_and_reported_final_parameters():
+    freq, _, z = spectrum()
+    result = fit(freq, z, n_starts=3, seed=3)
+    names = parameter_names("cpe")
+    assert all(list(a.start_parameters) == names and list(a.parameters) == names for a in result.attempts)
+    selected = result.attempts[result.selected_start_index]
+    assert selected.parameters == result.parameters
+    assert selected.parameter_permutation == result.parameter_permutation
+    json.dumps(result.diagnostics, allow_nan=False)
+
+
+def test_attempt_parameters_use_the_reported_arc_order(monkeypatch):
+    freq, p, z = spectrum()
+    swapped = p.copy()
+    swapped[2:5], swapped[5:8] = p[5:8], p[2:5]
+    outcomes = iter([solver_result(p), solver_result(swapped)])
+    monkeypatch.setattr(fitting, "least_squares", lambda *args, **kwargs: next(outcomes))
+    first, second = fit(freq, z, n_starts=2).attempts
+    assert first.parameters == second.parameters
+    assert first.parameter_permutation != second.parameter_permutation
+
+
+@pytest.mark.parametrize("rtol, expected", [(0.01, [0, 1]), (0.0, [0])])
+def test_near_best_reports_starts_within_the_declared_cost_tolerance(monkeypatch, rtol, expected):
+    freq, p, z = spectrum()
+    shifted = p.copy()
+    shifted[1] *= 1.02
+    outcomes = iter([solver_result(p, cost=1.0), solver_result(shifted, cost=1.005), solver_result(p, cost=1.5)])
+    monkeypatch.setattr(fitting, "least_squares", lambda *args, **kwargs: next(outcomes))
+    near = fit_model_eis(freq, z, FitConfig(n_starts=3, near_best_rtol=rtol)).diagnostics["near_best"]
+    assert near["start_indices"] == expected and near["start_count"] == len(expected)
+    assert near["relative_cost_tolerance"] == rtol
+    low, high = near["parameter_ranges"]["R0_Ohm"]
+    assert low == pytest.approx(p[1])
+    assert high == pytest.approx(shifted[1] if 1 in expected else p[1])
+
+
+def test_near_best_tolerance_must_be_finite_and_non_negative():
+    freq, _, z = spectrum()
+    with pytest.raises(ValueError, match="near_best_rtol"):
+        fit_model_eis(freq, z, FitConfig(near_best_rtol=-0.1))
+
+
+@pytest.mark.parametrize("tail", ["cpe", "warburg"])
+def test_every_reported_parameter_has_a_unit(monkeypatch, tail):
+    freq, p, z = spectrum(tail)
+    monkeypatch.setattr(fitting, "least_squares", lambda *args, **kwargs: solver_result(p))
+    result = fit(freq, z, tail=tail, n_starts=1)
+    assert list(parameter_units(tail)) == parameter_names(tail)
+    assert result.parameter_units == parameter_units(tail)
+    assert result.diagnostics["parameter_units"] == parameter_units(tail)
+
+
+@pytest.mark.parametrize("tail", ["cpe", "warburg"])
+def test_model_impedance_evaluates_named_parameters(tail):
+    freq, p, z = spectrum(tail)
+    named = dict(zip(parameter_names(tail), p))
+    np.testing.assert_allclose(model_impedance(named, freq, tail), z)
+    with pytest.raises(ValueError, match="missing"):
+        model_impedance({name: value for name, value in named.items() if name != "R0_Ohm"}, freq, tail)
+
+
+def test_plotting_options_are_separate_from_the_fit_configuration(tmp_path, monkeypatch):
+    assert not {"save_png_dpi", "show_plot", "close_plot"} & {f.name for f in dataclasses.fields(FitConfig)}
+    freq, p, z = spectrum()
+    monkeypatch.setattr(fitting, "least_squares", lambda *args, **kwargs: solver_result(p))
+    source = tmp_path / "sample.csv"
+    write_csv(source, freq, z)
+    result = process_file(source, cfg=FitConfig(n_starts=1), out_dir=tmp_path / "out", plot=PlotConfig(dpi=50))
+    assert Path(result["outputs"]["png"]).is_file()
+    payload = json.loads(Path(result["outputs"]["diagnostics"]).read_text())
+    assert "save_png_dpi" not in payload["config"]
+    assert payload["parameter_units"]["R0_Ohm"] == "Ohm"
+    sheet = pd.read_excel(result["outputs"]["xlsx"], sheet_name="attempt_parameters")
+    assert list(sheet["values"]) == ["start", "final"]
 
 
 @pytest.mark.parametrize("tail", ["cpe", "warburg"])

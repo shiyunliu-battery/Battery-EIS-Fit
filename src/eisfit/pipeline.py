@@ -7,13 +7,21 @@ from typing import Optional
 
 import pandas as pd
 
-from .config import FitConfig
+from .config import FitConfig, PlotConfig
 from .fitting import FitConvergenceError, FitResult, fit_model_eis
 from .io import eis_dataframe, load_eis
 from .plotting import plot_fit
 
 
-def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir: str | Path, cfg: FitConfig = FitConfig()) -> dict[str, str]:
+def save_fit_outputs(
+    input_path: str | Path,
+    freq,
+    Zexp,
+    fit: FitResult,
+    out_dir: str | Path,
+    cfg: FitConfig = FitConfig(),
+    plot: PlotConfig = PlotConfig(),
+) -> dict[str, str]:
     input_path = Path(input_path)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -43,7 +51,15 @@ def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir
         }
     )
     df_bounds = pd.DataFrame({"BoundHit": fit.bound_hits})
-    df_attempts = pd.DataFrame([asdict(attempt) for attempt in fit.attempts])
+    df_attempts = pd.DataFrame([
+        {name: value for name, value in asdict(attempt).items() if not isinstance(value, (dict, list, tuple))}
+        for attempt in fit.attempts
+    ])
+    df_attempt_parameters = pd.DataFrame([
+        {"start_index": attempt.start_index, "values": stage, **values}
+        for attempt in fit.attempts
+        for stage, values in (("start", attempt.start_parameters), ("final", attempt.parameters))
+    ])
 
     with pd.ExcelWriter(out_xlsx, engine="openpyxl") as writer:
         df_fit.to_excel(writer, sheet_name="fit_data", index=False)
@@ -51,17 +67,19 @@ def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir
         df_metrics.to_excel(writer, sheet_name="metrics", index=False)
         df_bounds.to_excel(writer, sheet_name="bound_hits", index=False)
         df_attempts.to_excel(writer, sheet_name="optimizer_attempts", index=False)
+        df_attempt_parameters.to_excel(writer, sheet_name="attempt_parameters", index=False)
 
     out_diagnostics.write_text(json.dumps({
         "parameters": fit.parameters,
+        "parameter_units": fit.parameter_units,
         "rmse": fit.rmse,
         "nrmse": fit.nrmse,
         "diagnostics": fit.diagnostics,
         "config": asdict(cfg),
     }, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
-    fig = plot_fit(freq, Zexp, fit.Zsim, output_path=out_png, dpi=cfg.save_png_dpi)
-    if cfg.close_plot:
+    fig = plot_fit(freq, Zexp, fit.Zsim, output_path=out_png, dpi=plot.dpi)
+    if plot.close:
         import matplotlib.pyplot as plt
 
         plt.close(fig)
@@ -69,16 +87,28 @@ def save_fit_outputs(input_path: str | Path, freq, Zexp, fit: FitResult, out_dir
     return {"xlsx": str(out_xlsx), "png": str(out_png), "diagnostics": str(out_diagnostics)}
 
 
-def process_file(path: str | Path, cfg: FitConfig = FitConfig(), out_dir: Optional[str | Path] = None, sheet_name: Optional[str] = None) -> dict:
+def process_file(
+    path: str | Path,
+    cfg: FitConfig = FitConfig(),
+    out_dir: Optional[str | Path] = None,
+    sheet_name: Optional[str] = None,
+    plot: PlotConfig = PlotConfig(),
+) -> dict:
     freq, Zexp = load_eis(path, sheet_name=sheet_name)
     fit = fit_model_eis(freq, Zexp, cfg=cfg)
     outputs = None
     if out_dir is not None:
-        outputs = save_fit_outputs(path, freq, Zexp, fit, out_dir=out_dir, cfg=cfg)
+        outputs = save_fit_outputs(path, freq, Zexp, fit, out_dir=out_dir, cfg=cfg, plot=plot)
     return {"input_path": str(path), "freq": freq, "Zexp": Zexp, "fit": fit, "outputs": outputs}
 
 
-def process_folder(folder: str | Path, pattern: str = "*.csv", cfg: FitConfig = FitConfig(), out_dir: Optional[str | Path] = None) -> dict[str, dict]:
+def process_folder(
+    folder: str | Path,
+    pattern: str = "*.csv",
+    cfg: FitConfig = FitConfig(),
+    out_dir: Optional[str | Path] = None,
+    plot: PlotConfig = PlotConfig(),
+) -> dict[str, dict]:
     folder = Path(folder)
     paths = sorted(folder.glob(pattern))
     if not paths:
@@ -86,7 +116,7 @@ def process_folder(folder: str | Path, pattern: str = "*.csv", cfg: FitConfig = 
     results = {}
     for path in paths:
         try:
-            results[str(path)] = process_file(path, cfg=cfg, out_dir=out_dir)
+            results[str(path)] = process_file(path, cfg=cfg, out_dir=out_dir, plot=plot)
         except FitConvergenceError as exc:
             results[str(path)] = {
                 "error": str(exc),

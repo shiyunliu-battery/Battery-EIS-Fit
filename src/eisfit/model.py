@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 
-from .config import TailModel
+from .config import TailModel, parameter_names
 
 
 def z_cpe(Q: float, n: float, w: np.ndarray) -> np.ndarray:
@@ -31,6 +33,17 @@ def model_eis(p: np.ndarray, w: np.ndarray, tail: TailModel = "cpe") -> np.ndarr
     else:
         raise ValueError(f"Unsupported tail model: {tail}")
     return Z
+
+
+def model_impedance(parameters: Mapping[str, float], frequency_hz: np.ndarray, tail: TailModel = "cpe") -> np.ndarray:
+    """Evaluate the circuit from named parameters, such as ``FitResult.parameters``, at frequencies in Hz."""
+    names = parameter_names(tail)
+    missing = [name for name in names if name not in parameters]
+    unexpected = sorted(set(parameters) - set(names))
+    if missing or unexpected:
+        raise ValueError(f"Parameters do not match the {tail} model: missing {missing}, unexpected {unexpected}.")
+    p = np.array([parameters[name] for name in names], dtype=float)
+    return model_eis(p, 2 * np.pi * np.asarray(frequency_hz, dtype=float), tail=tail)
 
 
 def model_eis_step(p: np.ndarray, w: np.ndarray, step: int, tail: TailModel = "cpe") -> np.ndarray:

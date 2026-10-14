@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 from scipy.optimize import least_squares
 
-from .config import FitConfig, TailModel, parameter_names
+from .config import FitConfig, TailModel, parameter_names, parameter_units
 from .model import model_eis, model_eis_step, rmse_complex
 
 
@@ -16,6 +16,13 @@ SUPPORTED_WEIGHTS = {"modulus", "unit"}
 
 @dataclass(frozen=True)
 class FitAttempt:
+    """One optimizer start.
+
+    ``start_parameters`` are the values passed to the optimizer, labelled in solver order.
+    ``parameters`` are the optimizer's final values in the reported characteristic-time
+    order given by ``parameter_permutation``; non-finite values are recorded as ``None``.
+    """
+
     start_index: int
     optimizer_success: bool
     accepted: bool
@@ -24,6 +31,10 @@ class FitAttempt:
     cost: float | None
     nfev: int
     rejection_reason: str | None
+    start_parameters: dict[str, float | None] = field(default_factory=dict)
+    parameters: dict[str, float | None] = field(default_factory=dict)
+    parameter_permutation: tuple[int, ...] = ()
+    bound_hits: tuple[str, ...] = ()
 
 
 class FitConvergenceError(RuntimeError):
@@ -50,6 +61,35 @@ class FitResult:
     selected_start_index: int | None = None
     parameter_permutation: tuple[int, ...] = ()
     parameter_bounds: dict[str, tuple[float, float]] = field(default_factory=dict)
+    near_best_rtol: float = 0.01
+
+    @property
+    def parameter_units(self) -> dict[str, str]:
+        return parameter_units(self.tail)
+
+    @property
+    def near_best(self) -> dict[str, Any]:
+        """Accepted starts whose cost is within ``near_best_rtol`` of the best cost.
+
+        Parameter ranges use each start's reported order. Agreement among near-best starts
+        describes this optimizer run; it does not establish identifiability or uncertainty.
+        """
+        accepted = [attempt for attempt in self.attempts if attempt.accepted and attempt.cost is not None]
+        if not accepted:
+            return {"relative_cost_tolerance": self.near_best_rtol, "cost_threshold": None,
+                    "start_count": 0, "start_indices": [], "parameter_ranges": {}}
+        threshold = min(attempt.cost for attempt in accepted) * (1.0 + self.near_best_rtol)
+        members = [attempt for attempt in accepted if attempt.cost <= threshold]
+        return {
+            "relative_cost_tolerance": self.near_best_rtol,
+            "cost_threshold": threshold,
+            "start_count": len(members),
+            "start_indices": [attempt.start_index for attempt in members],
+            "parameter_ranges": {
+                name: [min(a.parameters[name] for a in members), max(a.parameters[name] for a in members)]
+                for name in parameter_names(self.tail)
+            },
+        }
 
     @property
     def diagnostics(self) -> dict[str, Any]:
@@ -62,13 +102,20 @@ class FitResult:
             "selected_start_index": self.selected_start_index,
             "attempts": [asdict(attempt) for attempt in self.attempts],
             "accepted_start_count": sum(attempt.accepted for attempt in self.attempts),
+            "near_best": self.near_best,
             "parameter_ordering": "increasing_arc_characteristic_time",
             "parameter_permutation": list(self.parameter_permutation),
             "optimizer_parameter_order": "original_solver_order",
             "parameter_bounds": {name: list(bounds) for name, bounds in self.parameter_bounds.items()},
+            "parameter_units": self.parameter_units,
             "bound_hits": self.bound_hits,
             "identifiability_status": "not_assessed",
         }
+
+
+def named_values(names: list[str], values: np.ndarray) -> dict[str, float | None]:
+    """Label values with parameter names; non-finite values become None to keep JSON valid."""
+    return {name: float(value) if np.isfinite(value) else None for name, value in zip(names, values)}
 
 
 def canonical_arc_permutation(p: np.ndarray) -> tuple[int, ...]:
@@ -135,6 +182,8 @@ def validate_config(cfg: FitConfig) -> None:
         raise ValueError("weight_eps must be positive.")
     if cfg.f_scale is not None and cfg.f_scale <= 0:
         raise ValueError("f_scale must be positive when provided.")
+    if not np.isfinite(cfg.near_best_rtol) or cfg.near_best_rtol < 0:
+        raise ValueError("near_best_rtol must be finite and non-negative.")
 
 
 def make_bounds_from_data(freq: np.ndarray, Zexp: np.ndarray, tail: TailModel = "cpe") -> tuple[np.ndarray, np.ndarray]:
@@ -261,6 +310,7 @@ def fit_model_eis(freq: np.ndarray, Zexp: np.ndarray, cfg: FitConfig = FitConfig
 
     p0 = np.clip(initial_guess(freq, Zexp, cfg.tail), lb * (1 + 1e-12), ub * (1 - 1e-12))
     rng = np.random.default_rng(cfg.seed)
+    names = parameter_names(cfg.tail)
     best = None
     selected_start_index = None
     attempts = []
@@ -269,6 +319,16 @@ def fit_model_eis(freq: np.ndarray, Zexp: np.ndarray, cfg: FitConfig = FitConfig
         pstart = p0 if k == 0 else random_in_bounds(rng, lb, ub, cfg.tail)
         pstart = np.clip(pstart, lb * (1 + 1e-12), ub * (1 - 1e-12))
         res = least_squares(residual, pstart, bounds=(lb, ub), max_nfev=cfg.max_nfev, loss=cfg.loss, f_scale=f_scale)
+        x = np.asarray(res.x, dtype=float)
+        if np.all(np.isfinite(x)):
+            attempt_permutation = canonical_arc_permutation(x)
+            attempt_order = list(attempt_permutation)
+            attempt_values = named_values(names, x[attempt_order])
+            attempt_hits = tuple(get_bound_hits(x[attempt_order], lb[attempt_order], ub[attempt_order], cfg.tail))
+        else:
+            attempt_permutation = tuple(range(len(names)))
+            attempt_values = named_values(names, x)
+            attempt_hits = ()
         reason = None
         if not res.success:
             reason = "optimizer_not_converged"
@@ -288,6 +348,10 @@ def fit_model_eis(freq: np.ndarray, Zexp: np.ndarray, cfg: FitConfig = FitConfig
             cost=float(res.cost) if np.isfinite(res.cost) else None,
             nfev=int(res.nfev),
             rejection_reason=reason,
+            start_parameters=named_values(names, pstart),
+            parameters=attempt_values,
+            parameter_permutation=attempt_permutation,
+            bound_hits=attempt_hits,
         ))
         if accepted and (best is None or res.cost < best.cost):
             best = res
@@ -321,4 +385,5 @@ def fit_model_eis(freq: np.ndarray, Zexp: np.ndarray, cfg: FitConfig = FitConfig
         selected_start_index=selected_start_index,
         parameter_permutation=permutation,
         parameter_bounds=dict(zip(parameter_names(cfg.tail), zip(map(float, ordered_lb), map(float, ordered_ub)))),
+        near_best_rtol=cfg.near_best_rtol,
     )

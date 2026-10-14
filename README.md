@@ -1,6 +1,6 @@
 # eisfit
 
-[![Version](https://img.shields.io/badge/version-0.1.1-2563eb)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-2563eb)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776ab?logo=python&logoColor=white)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
 
@@ -70,7 +70,8 @@ else:
 ```
 
 Each attempted start records its index, optimizer success/status/message,
-evaluation count, cost, acceptance and rejection reason. A failed file fit
+evaluation count, cost, acceptance, rejection reason, start and final
+parameters, and bound hits (see below). A failed file fit
 does not write new fitted outputs. The CLI reports convergence failures as
 JSON and exits with status 1; a folder run continues with the remaining files
 and exits with status 1 if any file fails. Existing outputs from earlier runs
@@ -103,6 +104,52 @@ reported = result.optimizer.x[list(result.parameter_permutation)]
 The permutation and effective parameter bounds are included in
 `result.diagnostics`. Custom bounds are permuted with their branch, so bound
 warnings remain associated with the correct reported parameter.
+
+### Multistart audit and near-best starts
+
+Each `FitAttempt` records `start_parameters`, the values passed to the
+optimizer in solver order, and `parameters`, its final values in the reported
+arc order, together with that start's `parameter_permutation` and
+`bound_hits`. Non-finite final values are recorded as `None`, so attempts stay
+valid JSON.
+
+`result.diagnostics["near_best"]` lists the accepted starts whose cost is within
+`FitConfig.near_best_rtol` (default `0.01`, i.e. 1 %) of the best cost, and the
+range of each parameter across them:
+
+```python
+from eisfit import FitConfig, fit_model_eis
+
+result = fit_model_eis(freq, Zexp, FitConfig(n_starts=40, near_best_rtol=0.01))
+near = result.diagnostics["near_best"]
+print(near["start_count"], near["parameter_ranges"]["R1_Ohm"])
+```
+
+The tolerance only defines what is reported; it does not change which start is
+selected. Agreement among near-best starts describes this optimizer run with
+these bounds and settings. It does not establish identifiability, parameter
+uncertainty or a physical interpretation; a wide range shows that fits of
+almost equal cost exist with different parameter values.
+
+### Parameter units
+
+`result.parameter_units`, `parameter_units(tail)` and the diagnostics give the
+unit of every reported parameter: `L_H` in H, `R*_Ohm` in Ohm, `Q1/Q2/Qd` in
+S·s^n where n is the exponent of the same element, `n1/n2/nd` dimensionless,
+and `sigma` in Ohm·s^(-1/2).
+
+### Evaluating a fitted model
+
+Evaluate the circuit from named parameters at any frequencies in Hz, for
+example to draw a smooth fitted curve:
+
+```python
+import numpy as np
+from eisfit import model_impedance
+
+dense_freq = np.logspace(5, -2, 400)
+Z_dense = model_impedance(result.parameters, dense_freq, tail=result.tail)
+```
 
 Load the data first when you want direct access to frequency and impedance arrays:
 
@@ -189,9 +236,19 @@ For each fitted file, `eisfit` can generate:
 - residuals between measured and fitted impedance
 - Nyquist plot PNG
 - Excel output table for downstream analysis
-- optimizer-attempt audit sheet in the Excel output
-- `*_fit_diagnostics.json` containing parameters, solver diagnostics and the
-  actual requested fitting configuration, with effective bounds in diagnostics
+- optimizer-attempt audit sheet in the Excel output, and an
+  `attempt_parameters` sheet with each start's start and final parameters
+- `*_fit_diagnostics.json` containing parameters, parameter units, solver
+  diagnostics and the actual requested fitting configuration, with effective
+  bounds in diagnostics
+
+Figure options are separate from the fitting configuration:
+
+```python
+from eisfit import FitConfig, PlotConfig, process_file
+
+process_file("my_eis.csv", cfg=FitConfig(n_starts=40), out_dir="outputs", plot=PlotConfig(dpi=150))
+```
 
 ## Demo
 
@@ -230,7 +287,7 @@ python -m build
 
 ## Release
 
-PyPI releases are built from the clean public package branch using GitHub Actions and Trusted Publishing. See `RELEASE.md` for the release workflow.
+Releases are published from `main` by pushing a version tag; GitHub Actions and Trusted Publishing build and upload the package. See `RELEASE.md` for the release workflow.
 
 ## License
 

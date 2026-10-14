@@ -1,12 +1,12 @@
 # Release to PyPI
 
-This repository publishes the clean package from the `public` branch.
+`main` is the only branch. Releases are published from it by pushing a version tag.
 
 ## One-time PyPI setup
 
 1. Create or sign in to your PyPI account.
 2. Open PyPI's trusted publisher setup.
-3. Add a pending publisher with:
+3. Add a publisher with:
    - PyPI project name: `eisfit`
    - Owner: `shiyunliu-battery`
    - Repository: `Battery-EIS-Fit`
@@ -17,48 +17,27 @@ This repository publishes the clean package from the `public` branch.
 
 ## Release checklist
 
-Run locally from the `public` branch:
+1. On `main`, update `version` in `pyproject.toml` and the version badge in `README.md`.
+2. Add a `## <version>` section at the top of `CHANGELOG.md`. The release fails
+   before publication if this section is missing, and the GitHub release notes are
+   taken from it.
+3. Check locally:
 
-```bash
-pytest
-python -m compileall src tests
-python -m build
-twine check dist/*
-```
+   ```bash
+   pytest
+   ruff check src tests
+   python -m build
+   twine check dist/*
+   ```
 
-Then tag and push:
+4. Commit, push `main`, wait for CI to pass, then tag the same commit and push the tag:
 
-```bash
-git switch public
-git pull --ff-only origin public
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-```
+   ```bash
+   git push origin main
+   git tag -a v0.2.0 -m "eisfit 0.2.0"
+   git push origin v0.2.0
+   ```
 
-GitHub Actions will test, build, and publish the distribution to PyPI after any
-configured `pypi` environment approval.
-
-## Release branch
-
-The same publishing workflow also accepts a `release/<version>` branch. The
-branch suffix must match the package version in `pyproject.toml`; a mismatch
-fails before publication. Prepare the version update and changelog from
-`public`, then push the release branch:
-
-```bash
-git switch -c release/0.1.1 public
-git push origin release/0.1.1
-```
-
-After successful PyPI publication, the workflow creates the matching GitHub
-tag and release at the exact published commit. Merge the release changes back
-into `public`. The tag workflow is still available for subsequent releases.
-
-## Version updates
-
-Before the next release, update the version in `pyproject.toml` and tag the same version:
-
-```text
-pyproject.toml version = "0.1.1"
-git tag -a v0.1.1 -m "Release v0.1.1"
-```
+The tag must equal `v` plus the version in `pyproject.toml`. GitHub Actions then
+tests, builds and publishes to PyPI after any configured `pypi` environment
+approval, and creates the GitHub release for the tag.
