@@ -38,3 +38,6 @@ Thumbs.db
 secrets/
 *.pem
 *.key
+
+# Example data downloaded by the demo notebook
+examples/data/

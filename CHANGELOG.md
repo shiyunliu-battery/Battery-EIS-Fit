@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Removed the `EIS_dataset/` folder from the repository. The demo notebook now
+  downloads `ID01.csv` from Zenodo (doi:10.5281/zenodo.15422339, CC BY 4.0) on
+  first run, verifies its MD5 checksum and stores it in the untracked
+  `examples/data/` folder. The PyPI package never included the data. Earlier
+  commits and the v0.1.0, v0.1.1 and v0.2.0 tags still contain the folder.
+
 ## 0.2.0 — 2026-10-14
 
 - Record each optimizer start's start parameters (solver order) and final

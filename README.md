@@ -21,7 +21,7 @@ It is designed for battery EIS analysis workflows where users need a simple Pyth
 - Use either a flexible CPE tail or a Warburg diffusion tail
 - Export fitted parameters, simulated impedance, residuals, and Nyquist plots
 - Run from Python notebooks, scripts, or the command line
-- Use included demo files to test the workflow immediately after cloning
+- Try the workflow with a demo notebook that downloads a public EIS spectrum
 
 ## Installation
 
@@ -252,11 +252,17 @@ process_file("my_eis.csv", cfg=FitConfig(n_starts=40), out_dir="outputs", plot=P
 
 ## Demo
 
-The repository includes example EIS files and a demo notebook:
+The repository includes a demo notebook:
 
 ```text
 examples/demo_fit_zenodo_dataset.ipynb
 ```
+
+On first run it downloads `ID01.csv` from M. Moertelmaier, M. Kasper and S. Clark,
+"EIS data of 54 21700 cells", Zenodo, 2025, doi:
+[10.5281/zenodo.15422339](https://doi.org/10.5281/zenodo.15422339) (CC BY 4.0), checks its
+MD5 checksum against the value published by Zenodo, and stores it in `examples/data/`, which
+is not tracked. No data files are distributed in this repository or in the PyPI package.
 
 You can run the notebook after installing the local development environment:
 
